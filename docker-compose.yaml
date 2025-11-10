@@ -14,16 +14,29 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
-    # depends_on:
-    #   - certbot
+      - ./html:/usr/share/nginx/html
+    entrypoint: >
+      sh -c "
+        set -eux;
+        until [ -f /etc/nginx/certs/cert.pem ]; do
+          echo 'Waiting for certificate...';
+          sleep 2;
+        done;
+        echo 'Certificate found, starting NGINX';
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
+      "
 
   certbot:
     image: certbot/certbot
     container_name: certbot
     volumes:
+      #- ./certs:/etc/letsencrypt/live/example-nginx-reverse.app/
       - ./certs:/etc/letsencrypt
       - ./html:/usr/share/nginx/html
     entrypoint: >
-      sh -c "certbot certonly --webroot -w /usr/share/nginx/html -d example-nginx-reverse.app --email you@example.com --agree-tos --non-interactive || true"
+      sh -c "
+        set -eux;
+        certbot certonly --webroot -w /usr/share/nginx/html -d example-nginx-reverse.app --email you@example.com --agree-tos --non-interactive || true
+      "

@@ -93,7 +93,7 @@ docker compose down
 
 ### Notes
 
-- The `certbot` container will fail locally because a real domain is needed, but the workflow is ready for production.
+- The `certbot` container will fail locally because a domain and/or a public ip are needed. *It needs to be tested when this conditions will be satisfied*
 - Self-signed certificates can be generated locally for testing purposes using `generate_cert.sh`.
 - Docker Compose automatically rebuilds the app if the source code changes.
 
@@ -120,3 +120,4 @@ reverse_nginx_example/
 - **Certbot**: Automates certificate generation for HTTPS.
 
 ---
+
