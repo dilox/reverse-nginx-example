@@ -1,0 +1,15 @@
+#cloud-config
+users:
+  - name: pdilorenzo
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBHLOEQmT+SkhsJrK8SwVv8dfCOImgOIyyImQuR2Fd3o
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+
+ssh_pwauth: false
+disable_root: true
+
+# let cloud-init bring up all interfaces via DHCP
+network:
+  version: 2
+  ethernets: {}

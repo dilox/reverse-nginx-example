@@ -1,10 +1,11 @@
 ---
-- name: Install and configure Docker CE and Compose
-  hosts: localhost
-
+- name: Deploy Docker Environment and Reverse Proxy Application
+  hosts: all
   vars:
+    ansible_python_interpreter: /usr/bin/python3
     docker_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
     docker_repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    nginx_domain: "example-nginx-reverse.app"
 
   tasks:
     - name: Ensure required system packages are installed
@@ -16,23 +17,40 @@
           - gnupg
           - lsb-release
           - git
+          - ansible-core
         state: present
         update_cache: yes
       become: true      
 
-    - name: Create keyrings directory
+    # - name: Ensure community.crypto collection is installed
+    #   ansible.builtin.ansible_galaxy:
+    #     type: collection
+    #     name: community.crypto
+    #     state: present
+    #   delegate_to: localhost
+    #   run_once: true
+
+    - name: Ensure keyrings directory exists
       file:
         path: /etc/apt/keyrings
         state: directory
         mode: '0755'
       become: true
 
-    - name: Download Docker GPG key and save to keyrings
-      get_url:
-        url: "{{ docker_apt_key_url }}"
-        dest: /etc/apt/keyrings/docker.asc
-        mode: '0644'
+    - name: Download Docker GPG key
+      ansible.builtin.shell: |
+        curl -fsSL {{ docker_apt_key_url }} -o /etc/apt/keyrings/docker.asc
+      args:
+        creates: /etc/apt/keyrings/docker.asc
       become: true
+
+    # - name: Download Docker GPG key
+    #   ansible.builtin.get_url:
+    #     url: "{{ docker_apt_key_url }}"
+    #     dest: /etc/apt/keyrings/docker.asc
+    #     mode: '0644'
+    #     force: false
+    #   become: true
 
     - name: Add Docker repository
       apt_repository:
@@ -83,7 +101,14 @@
         name: "{{ ansible_user_id }}"
         groups: docker
         append: yes
-      become: true      
+      become: true
+
+    - name: Ensure reverse-nginx-example repository is cloned
+      git:
+        repo: https://github.com/dilox/reverse-nginx-example
+        dest: ./reverse-nginx-example
+        version: solution_2
+        force: yes
 
     - name: Ensure linux_tweet_app repository is cloned
       git:
@@ -92,13 +117,48 @@
         version: master
         force: yes
 
-    - name: Build linux_tweet_app Docker image
+    # - name: Build linux_tweet_app Docker image
+    #   become: true
+    #   shell: docker compose build --no-cache linux_tweet_app
+    #   args:
+    #     chdir: ./reverse-nginx-example
+
+    - name: Build linux_tweet_app Docker image using docker_image module
       community.docker.docker_image:
-        name: linux_tweet_app
-        build:
-          path: ./linux_tweet_app
+        name: linux_tweet_app 
         source: build
         state: present
+        build: 
+          path: ./linux_tweet_app 
+          nocache: true 
+      become: true
+
+    - name: Ensure certificate directory exists
+      file:
+        path: "./reverse-nginx-example/certs"
+        state: directory
+        mode: "0755"
+
+    - name: Generate Private Key (privkey.pem)
+      community.crypto.openssl_privatekey:
+        path: "./reverse-nginx-example/certs/privkey.pem"
+        size: 2048
+        mode: '0600'
+      become: true
+
+    - name: Generate self-signed certificate
+      community.crypto.x509_certificate:
+        path: "./reverse-nginx-example/certs/cert.pem"
+        privatekey_path: "./reverse-nginx-example/certs/privkey.pem"
+        provider: selfsigned
+        attributes:
+          common_name: "{{ nginx_domain }}"
+        selfsigned_not_after: +365d
+        unsafe_writes: yes
+      become: true
+      ignore_errors: true
 
     - name: Start Docker Compose services
       command: docker compose up -d
+      args:
+        chdir: ./reverse-nginx-example

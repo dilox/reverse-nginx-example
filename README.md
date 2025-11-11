@@ -1,122 +1,68 @@
-# NGINX Reverse Proxy with SSL – Automated Deployment
+# Docker Compose Web Deployment Example
+This project provides an Ansible solution for deploying a simple web application (linux_tweet_app) using Docker Compose (for multi-container orchestration) and an Nginx reverse proxy acting as the entry point, onto a remote VM. This is intended to serve as a basic, reproducible example for deploying containerized web stacks.
 
-This project demonstrates how to automate the deployment of a simple web application (`linux_tweet_app`) behind an NGINX reverse proxy with HTTPS using Let's Encrypt certificates. The deployment is fully automated using **Ansible** and **Docker Compose**.
 
----
+## Project Workflow and Execution Model
+This project uses Ansible to perform remote configuration and management on an existing, running Virtual Machine (VM).
 
-## Overview
+### Key Points:
+Remote Control: The Ansible playbooks act as a control node (your laptop/CI runner) to configure software on a separate, running VM (the target).
 
-The solution consists of:
+No VM Provisioning in Playbooks: The Ansible playbooks in this repository do not create the VM. They assume the target VM is already running and accessible via SSH.
 
-1. **linux_tweet_app** – a simple web application based on NGINX.
-2. **NGINX** – reverse proxy listening on ports 80 (HTTP) and 443 (HTTPS). HTTP traffic is redirected to HTTPS.
-3. **Certbot** – handles certificate generation. In local environments, it may fail, but it works on a real domain.
-4. **Ansible** – automates package installation, Docker installation, repository cloning, image building, and Docker Compose deployment.
-
----
-
-## Deployment Flow
-
-```text
-+----------------+      HTTP/HTTPS       +-----------------+
-|                |---------------------> |                 |
-| Client Browser |                       |      NGINX      |
-|                |<--------------------- |  Reverse Proxy  |
-+----------------+      Redirects        +-----------------+
-                                       /       \
-                                      /         \
-                        +----------------+   +-----------------+
-                        | linux_tweet_app|   |   Certbot       |
-                        +----------------+   +-----------------+
-```
-
----
 
 ## Prerequisites
+### 1. Virtualization Host
+You must have an SSH-accessible target VM ready for Ansible to manage. Choose the option below that matches your current setup:
 
-- Ubuntu or similar Linux.
-- Ansible.
-- Docker Engine & Docker Compose (installed automatically by playbook).
-- Internet connection (for pulling Docker images and Certbot).
+Option A: Existing Ubuntu fresh VM. You can skip all creation steps and proceed directly to Step 2: Remote Management with Ansible. Ensure you have the VM's IP address and SSH credentials with sudo privileges
 
----
-
-## How to Deploy
-
-### 1. Clone the Repository
+Option B: Remote libvirt/QEMU Host. Connect to the remote libvirtd daemon using the SSH-based URI format:
 
 ```bash
-git clone https://github.com/dilox/reverse-nginx-example
-cd reverse-nginx-example
+
+--connect qemu+ssh://YOUR_USER@YOUR_REMOTE_HOST/system
 ```
 
-### 2. Run Ansible Playbook
+Option C: Local libvirt/QEMU Laptop (For simplified testing) Install the stack locally to create a target VM for testing:
+
+Installation (Ubuntu/Debian Example):
 
 ```bash
-ansible-playbook -i inventory.ini playbook.yaml -K
+
+sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients virtinst
+sudo usermod -aG libvirt $USER
+
 ```
 
-- `-K` prompts for your sudo password.
-- This will:
-  - Install system packages.
-  - Install Docker CE & Docker Compose.
-  - Clone and build `linux_tweet_app`.
-  - Add current user to the Docker group (if needed).
-  - Start Docker Compose for NGINX, linux_tweet_app, and Certbot.
+### 1.1. Prepare Image and Cloud-Init Seed
+```bash
+wget https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+cloud-localds seed.iso user-data meta-data
+# optional
+qemu-img resize noble-server-cloudimg-amd64.img 50G
+```
+### 1.2. Start the VM using virt-install
+```bash
+virt-install \
+  --name ubuntu-cloud-vm-2 \
+  --memory 2048 \
+  --vcpus 2 \
+  --disk path=noble-server-cloudimg-amd64.img,format=qcow2 \
+  --disk path=seed.iso,device=cdrom,format=raw \
+  --os-variant ubuntu23.10 \
+  --graphics none \
+  --console pty,target_type=serial \
+  --import \
+  --network network=default,model=virtio
+```
 
----
-
-### 3. Verify Deployment
-
-- Check Docker Compose services:
+### Step 2: Remote Management with Ansible
+Check your inventory.ini for the correct IP/hostname*, and execute the playbook.
 
 ```bash
-docker compose ps
+ansible-playbook -i inventory.ini playbook.yaml -vv
 ```
 
-- Test NGINX reverse proxy (HTTP redirects to HTTPS):
-
-```bash
-curl -Lk http://localhost
-curl -Lk https://localhost
-```
-
----
-
-### 4. Stop Services
-
-```bash
-docker compose down
-```
-
----
-
-### Notes
-
-- The `certbot` container will fail locally because a real domain is needed, but the workflow is ready for production.
-- Self-signed certificates can be generated locally for testing purposes using `generate_cert.sh`.
-- Docker Compose automatically rebuilds the app if the source code changes.
-
----
-
-### File Structure
-
-```
-reverse_nginx_example/
-├── playbook.yaml
-├── inventory.ini
-├── docker-compose.yaml
-├── nginx.conf
-├── generate_cert.sh
-└── linux_tweet_app/   # cloned by Ansible
-```
-
----
-
-### Justification of Tools
-
-- **Ansible**: Automates system setup, Docker installation, and deployment. Ensures reproducibility and idempotency.
-- **Docker & Docker Compose**: Simplifies deployment and management of the web app, NGINX, and Certbot.
-- **Certbot**: Automates certificate generation for HTTPS.
-
----
+### 2.2. Verify Deployment
+After the playbook successfully runs, the configured service (e.g., a web server) should be running on the target VM. You will verify this by checking that the example website is reachable by browsing to the VM's IP address.
