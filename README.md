@@ -96,8 +96,12 @@ docker compose down
 - The `certbot` container will fail locally because a domain and/or a public ip are needed. *It needs to be tested when this conditions will be satisfied*
 - Self-signed certificates can be generated locally for testing purposes using `generate_cert.sh`.
 - Docker Compose automatically rebuilds the app if the source code changes.
+- Lets encrypt expires after 90 days, to renew certificates
+```bash
+docker compose run --rm certbot renew
 
----
+docker compose exec nginx nginx -s reload
+```
 
 ### File Structure
 
